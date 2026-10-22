@@ -129,7 +129,8 @@ button { cursor: pointer; }
 .card ul { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 8px; }
 .card.warn { background: var(--warn-soft); border-color: var(--warn-line); }
 .card.warn h2 { color: var(--warn); }
-.card.warn li { padding-left: 14px; border-left: 3px solid var(--warn-line); font-size: 0.95rem; }
+.card.warn li { font-size: 0.95rem; }
+.card.warn li + li { border-top: 1px solid var(--warn-line); padding-top: 8px; }
 .warn-icon { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--warn); color: var(--warn-soft); font-size: 0.8rem; font-weight: 800; }
 .checks label { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
 input[type='checkbox'] { width: 22px; height: 22px; margin: 2px 0 0; flex: none; accent-color: var(--done); cursor: pointer; }
