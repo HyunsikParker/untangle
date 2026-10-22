@@ -7,7 +7,8 @@ const octets = (s: string) => new TextEncoder().encode(s).length
 
 describe('calendar and text export', () => {
   const s = samples('2026-10-26').find((x) => x.id === 'aid')!
-  const r = untangle(s.text, s.received)
+  // The email's own dated steps: one with a time (Nov 6, 5 pm) and, added here, one all-day deadline (Nov 9).
+  const r = untangle(`${s.text}\n\nReturn the signed loan form within 14 days.`, s.received)
   const ics = buildIcs(r.steps, 'Financial aid', new Date(Date.UTC(2026, 9, 26, 9)))
 
   it('writes timed and all-day events with reminders', () => {

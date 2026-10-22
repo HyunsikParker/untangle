@@ -22,6 +22,16 @@ describe('dates', () => {
     expect(d('Write a 1/2 page summary')).toEqual([])
   })
 
+  it('leaves out opening hours and windows that start from a later event', () => {
+    const d = (t: string) => findDates(t, REF).map((h) => h.date)
+    expect(d('Call us Monday to Friday, 9 a.m. to 4 p.m.')).toEqual([])
+    expect(d('The office is open Mon-Fri and every Saturday.')).toEqual([])
+    expect(d('After you upload your documents, check your email within 10 business days.')).toEqual([])
+    expect(d('Your deposit is returned within 30 days of your move-out.')).toEqual([])
+    expect(d('Reply within 10 days of receiving this letter.')).toEqual(['2026-11-05'])
+    expect(d('Reply by Friday; the office is closed Monday through Wednesday.')).toEqual(['2026-10-30'])
+  })
+
   it('finds a deadline with its time and tells deadlines from appointments', () => {
     const w = findWhen('Submit it by 11:59 p.m. on Thursday, October 29.', '2026-10-19')!
     expect([w.date, w.time, w.kind]).toEqual(['2026-10-29', '23:59', 'deadline'])
@@ -56,6 +66,9 @@ describe('reading sentences', () => {
     expect(asInstruction('Please complete the form.')?.text).toBe('Complete the form.')
     expect(asInstruction('Next, pay the fee online.')?.text).toBe('Pay the fee online.')
     expect(asInstruction('If you rent, upload your lease.')).toEqual({ text: 'Upload your lease.', condition: 'If you rent' })
+    expect(asInstruction('After you upload your documents, check your email.')?.text).toBe('After you upload your documents, check your email.')
+    expect(asInstruction('Then, once the form is signed, you must scan it.')?.text).toBe('Once the form is signed, scan it.')
+    expect(asInstruction('To finish, return the keys.')?.text).toBe('Return the keys.')
     expect(asInstruction('Make sure every page is readable.')?.text).toBe('Make sure every page is readable.')
     expect(asInstruction('Your application has been selected.')).toBeNull()
     expect(asInstruction('Please read this whole message.')).toBeNull()
@@ -78,11 +91,12 @@ describe('untangle', () => {
       'Submit the following documents through the Student Portal (portal.northfield.example/verify) by Friday, November 6 at 5:00 p.m.',
       'One of your parents must also sign the worksheet.',
       'Make sure every page is readable and that your student ID number is written at the top of each page.',
-      'Check your Northfield email within 10 business days, because we may ask for more information.',
+      'After you upload your documents, check your Northfield email within 10 business days, because we may ask for more information.',
     ])
     expect(r.steps[0].when).toMatchObject({ date: '2026-11-06', time: '17:00', kind: 'deadline' })
     expect(r.steps[1].condition).toBe('If you are a dependent student')
-    expect(r.steps[3].when).toMatchObject({ date: '2026-11-09', kind: 'deadline' })
+    expect(r.steps[3].when).toBeNull() // counts from the upload, not from the day the email arrived
+    expect(r.dates.map((x) => x.when.date)).toEqual(['2026-11-06'])
     expect(r.ready.map((x) => x.text)).toEqual([
       'A signed copy of the 2027-28 Verification Worksheet',
       'Your 2025 IRS tax return transcript (not the full tax return)',

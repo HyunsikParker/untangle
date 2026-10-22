@@ -168,18 +168,26 @@ export function asInstruction(sentence: string): { text: string; condition: stri
     condition = capitalize(`${cond[1]} ${cond[2]}`)
     s = cond[3]
   }
+  // Filler and purpose lead-ins go ("Next,", "To complete verification,"); a timing clause stays with the step, because
+  // "After you upload your documents, check your email" is a different instruction from "Check your email".
+  const lead = LEAD_IN.exec(s)
+  const timing = lead ? /\b((?:once|after|before|when)\s[^,]{2,60}?)\s*,/i.exec(lead[0])?.[1] ?? null : null
   s = s.replace(LEAD_IN, '')
+  const step = (text: string) => ({
+    text: timing ? `${capitalize(timing.trim())}, ${text.charAt(0).toLowerCase()}${text.slice(1)}` : text,
+    condition,
+  })
   if (/\?\s*$/.test(s) || READ_THIS.test(s)) return null
-  if (REMINDER.test(s)) return { text: tidy(s.replace(/^please\s+/i, '')), condition }
-  if (VERBS.has(firstWord(s))) return { text: tidy(s), condition }
+  if (REMINDER.test(s)) return step(tidy(s.replace(/^please\s+/i, '')))
+  if (VERBS.has(firstWord(s))) return step(tidy(s))
   const ob = OBLIGATION.exec(s)
   if (ob && VERBS.has(ob[1].toLowerCase())) {
     let rest = s.slice(ob.index + ob[0].length - ob[1].length)
     if (!/^you\b/i.test(ob[0])) rest = rest.replace(/\btheir\b/g, 'your').replace(/\bthey\b/g, 'you') // "each student needs to submit their own copy"
-    return { text: tidy(rest), condition }
+    return step(tidy(rest))
   }
   const other = OTHER_OBLIGATION.exec(s)
-  if (other && VERBS.has(other[1].toLowerCase())) return { text: tidy(s), condition }
+  if (other && VERBS.has(other[1].toLowerCase())) return step(tidy(s))
   return null
 }
 

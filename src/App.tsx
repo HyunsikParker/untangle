@@ -203,7 +203,7 @@ export default function App() {
             <h2 id="how-title">How it reads a message</h2>
             <ul>
               <li><strong>Steps</strong> are sentences that ask you to do something (&ldquo;Submit&hellip;&rdquo;, &ldquo;You must&hellip;&rdquo;, &ldquo;Make sure&hellip;&rdquo;) and numbered or bulleted items.</li>
-              <li><strong>Dates</strong> such as &ldquo;by Friday, November 6 at 5:00 p.m.&rdquo; or &ldquo;within 10 business days&rdquo; become due dates you can add to your calendar.</li>
+              <li><strong>Dates</strong> such as &ldquo;by Friday, November 6 at 5:00 p.m.&rdquo; or &ldquo;within 10 business days&rdquo; become due dates you can add to your calendar. A window that starts later (&ldquo;after you upload your documents&rdquo;) keeps its wording instead of a guessed date, and opening hours are not read as dates.</li>
               <li><strong>Things to have ready</strong> come from lines like &ldquo;You will need:&rdquo; or &ldquo;Bring&hellip;&rdquo;; <strong>warnings</strong> from &ldquo;do not&rdquo;, &ldquo;late&rdquo;, &ldquo;will not be accepted&rdquo; and similar.</li>
               <li>Every item keeps the original sentence, so you can always check the exact wording. It is a reading aid, not advice: if something matters, read the original.</li>
             </ul>

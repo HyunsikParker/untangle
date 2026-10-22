@@ -103,6 +103,18 @@ interface DateHit {
   length: number
 }
 
+/**
+ * Whether "within 10 days" counts from something that has not happened yet ("After you upload your documents, ...",
+ * "within 30 days of your move-out") rather than from the day the message arrived ("within 10 days of receiving this").
+ */
+function countsFromLater(text: string, index: number, length: number): boolean {
+  const after = text.slice(index + length)
+  if (/^\s+(?:of|after|from|following)\s+(?:(?:the\s+)?(?:date\s+(?:of|on)\s+)?(?:this|receiving|receipt|today)\b)/i.test(after)) return false
+  if (/^\s+(?:of|after|from|following)\s+\w/i.test(after)) return true
+  const sentenceStart = Math.max(...['.', '!', '?', '\n'].map((c) => text.lastIndexOf(c, index - 1))) + 1
+  return /\b(?:after|once|when|as soon as)\s+(?:you|we|your|the|they|it)\b/i.test(text.slice(sentenceStart, index))
+}
+
 /** Every calendar date mentioned in the text, resolved against the reference day. */
 export function findDates(text: string, ref: string): DateHit[] {
   const hits: DateHit[] = []
@@ -141,12 +153,12 @@ export function findDates(text: string, ref: string): DateHit[] {
     }],
     [/\bwithin\s+(\d{1,3}|[a-z]+)\s+(business|working|calendar)?\s*days?\b/gi, (mm) => {
       const n = /^\d+$/.test(mm[1]) ? +mm[1] : NUM_WORDS[mm[1].toLowerCase()] ?? NaN
-      if (!Number.isFinite(n)) return ''
+      if (!Number.isFinite(n) || countsFromLater(text, mm.index, mm[0].length)) return ''
       return mm[2] && /business|working/i.test(mm[2]) ? addBusinessDays(ref, n) : addDays(ref, n)
     }],
     [/\b(?:within|in)\s+(\d{1,2}|[a-z]+)\s+weeks?\b/gi, (mm) => {
       const n = /^\d+$/.test(mm[1]) ? +mm[1] : NUM_WORDS[mm[1].toLowerCase()] ?? NaN
-      return Number.isFinite(n) ? addDays(ref, n * 7) : ''
+      return Number.isFinite(n) && !countsFromLater(text, mm.index, mm[0].length) ? addDays(ref, n * 7) : ''
     }],
   ]
   for (const [re, fn] of rel) {
@@ -156,11 +168,15 @@ export function findDates(text: string, ref: string): DateHit[] {
     }
   }
   // A weekday on its own ("by Friday", "next Tuesday") when no calendar date sits right next to it.
+  // Opening hours ("Monday to Friday, 9 a.m. to 4 p.m.", "every Tuesday") repeat; they are not a date to act on.
+  const repeating: [number, number][] = []
+  const span = new RegExp(`\\b${WEEKDAY_RE}\\s*(?:-|–|—|to|through|thru|until|till)\\s*${WEEKDAY_RE}\\b|\\b(?:every|each)\\s+${WEEKDAY_RE}\\b`, 'gi')
+  while ((m = span.exec(text))) repeating.push([m.index, m.index + m[0].length])
   const wd = new RegExp(`\\b(?:(this|next|coming)\\s+)?(${WEEKDAY_RE})\\b`, 'gi')
   while ((m = wd.exec(text))) {
     const start = m.index
     const covered = hits.some((h) => start >= h.index - 1 && start < h.index + h.length)
-    if (covered) continue
+    if (covered || repeating.some(([a, b]) => start >= a && start < b)) continue
     const dow = weekdayIndex(m[2])
     if (dow < 0) continue
     hits.push({ date: nextWeekday(ref, dow), index: m.index, length: m[0].length })

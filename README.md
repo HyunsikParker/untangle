@@ -31,7 +31,9 @@ for whom long text is tiring to read, and screen-reader and keyboard users.
      bulleted items, rewritten as short instructions ("You will need to submit the documents by Friday" becomes
      "Submit the documents by Friday"). Conditions stay attached ("Only if you are a dependent student").
    - **Due dates**: "by Friday, November 6 at 5:00 p.m.", "within 10 business days" or "before October 22" become
-     dates, counted from the day the message arrived, with "in 11 days" shown next to each.
+     dates, counted from the day the message arrived, with "in 11 days" shown next to each. A window that starts with
+     something you have not done yet ("After you upload your documents, … within 10 business days") keeps its wording
+     instead of a guessed date, and opening hours ("Monday to Friday, 9 a.m. to 4 p.m.") are not read as dates.
    - **Have ready**: items from "You will need:" lists, "Bring…" sentences and lists of documents.
    - **Watch out**: sentences with "do not", "late", "will not be accepted", "not allowed" and similar.
    - **Contacts and links**, **every date in the message**, and the rest of the message, folded away.
@@ -49,8 +51,9 @@ and the exact words are what count.
 ## Example
 
 The built-in financial aid email has 13 sentences and a three-item bulleted list. Untangle turns it into 4 steps (one with a
-deadline at 5 pm and one "within 10 business days"), 3 documents to have ready, 3 warnings ("Do not email documents",
-"Late documents may delay your aid…") and the office's contact details, and sets the rest of the message aside.
+deadline at 5 pm, and one to do within 10 business days after the upload), 3 documents to have ready, 3 warnings ("Do not
+email documents", "Late documents may delay your aid…") and the office's contact details, and sets the rest of the message
+aside.
 
 ## How it reads a message
 
@@ -58,9 +61,10 @@ deadline at 5 pm and one "within 10 business days"), 3 documents to have ready, 
   the sentence that introduced it, so "You will need to submit the following documents:" turns its bullets into
   documents to have ready, while "Before your first day, please complete the following:" turns them into steps and
   passes its date on to them.
-- A sentence is a step when it starts with one of about 190 instruction verbs (after lead-ins such as "please", "next"
-  or "after you upload your documents,"), when it says what you or someone else must, should or need to do, or when it
-  states that something "is due" on a date. Questions, greetings and "read this message" lines are not steps.
+- A sentence is a step when it starts with one of about 190 instruction verbs (after lead-ins such as "please" or
+  "next"; a timing clause such as "after you upload your documents," stays at the front of the step), when it says what
+  you or someone else must, should or need to do, or when it states that something "is due" on a date. Questions,
+  greetings and "read this message" lines are not steps.
 - Dates are found in the usual forms (`November 6`, `6 November`, `11/6`, `2026-11-06`, `Friday`, `tomorrow`,
   `within 10 business days`, `end of the month`). A date reads as a deadline when "by", "before", "due" or "no later
   than" comes right before it; "by courier on Friday" does not count.
@@ -83,17 +87,18 @@ only in this browser's local storage; *Clear my text* removes them. Read-aloud u
 
 ## How it was checked
 
-- 14 unit tests (`npm test`): dates (relative words, business days, years, times, deadline versus appointment), sentence
-  splitting, list handling, rewriting obligations as instructions, contacts, the three examples, an onboarding email,
-  and the calendar and text exports.
+- 15 unit tests (`npm test`): dates (relative words, business days, years, times, deadline versus appointment, opening
+  hours and windows that start later), sentence splitting, list handling, rewriting obligations as instructions,
+  contacts, the three examples, an onboarding email, and the calendar and text exports.
 - 3 browser tests (`npm run test:e2e`, Playwright on the production build): the financial aid example end to end
-  including focus mode by keyboard and the calendar download, an automated accessibility scan with axe (no
+  including focus mode by keyboard and the calendar downloads (that example and the move-out letter), an automated
+  accessibility scan with axe (no
   violations), no console errors, no network requests, pasting your own text, reading settings and progress kept
   across a reload, and phone width.
 - The calendar file from the browser test is parsed again with the Python
   [icalendar](https://pypi.org/project/icalendar/) library (`python3 scripts/check_ics.py
-  test-results/untangle-aid.ics`): one timed event with a reminder an hour before and one all-day event with a 9 am
-  reminder, no duplicate UIDs.
+  test-results/untangle-moveout.ics`): one timed event with a reminder an hour before and one all-day event with a
+  9 am reminder, no duplicate UIDs.
 
 ## Run it locally
 

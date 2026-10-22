@@ -53,12 +53,24 @@ test('financial aid sample: checklist, one step at a time, calendar file', async
   await expect(page.locator('.steps > li.is-done')).toHaveCount(3)
   await expect(page.getByRole('button', { name: 'Continue: 1 left' })).toBeVisible()
 
+  // Only the 5 pm deadline is dated: "within 10 business days" counts from the upload, so it gets no guessed date.
   const download = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Add dates to calendar' }).click()]).then(([d]) => d)
   expect(download.suggestedFilename()).toBe('untangle-dates.ics')
-  await download.saveAs('test-results/untangle-aid.ics') // for scripts/check_ics.py
   const ics = readFileSync((await download.path())!, 'utf8')
-  expect(ics.match(/BEGIN:VEVENT/g)?.length).toBe(2)
+  expect(ics.match(/BEGIN:VEVENT/g)?.length).toBe(1)
   expect(ics).toMatch(/DTSTART:\d{8}T170000\r\n/)
+  await expect(page.locator('.steps > li').nth(3).locator('.badge.deadline')).toHaveCount(0)
+  await expect(page.locator('.dates li')).toHaveCount(1) // office hours ("Monday to Friday, 9 a.m.") are not a date
+
+  // The move-out letter has a timed deadline and an all-day one.
+  await page.getByRole('button', { name: 'Edit or paste new text' }).click()
+  await page.getByRole('button', { name: 'Move-out letter' }).click()
+  const moveout = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Add dates to calendar' }).click()]).then(([d]) => d)
+  await moveout.saveAs('test-results/untangle-moveout.ics') // for scripts/check_ics.py
+  const ics2 = readFileSync((await moveout.path())!, 'utf8')
+  expect(ics2.match(/BEGIN:VEVENT/g)?.length).toBe(2)
+  expect(ics2).toMatch(/DTSTART;VALUE=DATE:\d{8}\r\n/)
+  expect(ics2).toMatch(/DTSTART:\d{8}T120000\r\n/)
 
   const a11y = await new AxeBuilder({ page }).analyze()
   if (a11y.violations.length) console.log(JSON.stringify(a11y.violations.flatMap((v) => v.nodes.map((n) => ({ id: v.id, t: n.target })))).slice(0, 3000))
