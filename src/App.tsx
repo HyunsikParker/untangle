@@ -138,7 +138,8 @@ export default function App() {
     a.click()
     a.remove()
     setTimeout(() => URL.revokeObjectURL(url), 10_000)
-    setNote(`Saved untangle-dates.ics with ${plural(datedSteps(result.steps).length, 'dated step')}. Open it to add them to your calendar.`)
+    const n = datedSteps(result.steps).length
+    setNote(`Saved untangle-dates.ics with ${plural(n, 'dated step')}. Open it to add ${n === 1 ? 'it' : 'them'} to your calendar.`)
   }
 
   const copy = async () => {

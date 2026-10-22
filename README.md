@@ -4,7 +4,11 @@
 pulls out what you have to do, by when, what to have ready and what to watch out for, then walks you through it one step
 at a time. Everything happens in your browser.
 
-Live demo: https://hyunsikparker.github.io/untangle/
+Live demo: https://hyunsikparker.github.io/untangle/ · Video walkthrough (1 min 8 s, captions):
+https://hyunsikparker.github.io/untangle/demo.html
+
+The video is recorded from the page by `scripts/demo.mjs` (Playwright), which first checks the numbers the narration
+quotes against the page. The narration is a synthetic voice (Qwen3-TTS, run locally).
 
 ## The problem
 
