@@ -77,24 +77,31 @@ function addBusinessDays(ref: string, n: number): string {
   return d
 }
 
-function parseTime(text: string): { time: string; index: number; length: number } | null {
-  const named = /\b(noon|midday|midnight)\b/i.exec(text)
-  const clock = /\b(\d{1,2})(?::(\d{2}))?\s*(a\.?\s?m\.?|p\.?\s?m\.?)(?![a-z])/i.exec(text)
-  const h24 = /\b([01]?\d|2[0-3]):([0-5]\d)\b(?!\s*(?:a\.?m|p\.?m))/i.exec(text)
-  const found: { time: string; index: number; length: number }[] = []
-  if (named) found.push({ time: /mid(?!day)/i.test(named[1]) && /night/i.test(named[1]) ? '23:59' : '12:00', index: named.index, length: named[0].length })
-  if (clock) {
+interface TimeHit {
+  time: string
+  index: number
+  length: number
+}
+
+function findTimes(text: string): TimeHit[] {
+  const found: TimeHit[] = []
+  for (const named of text.matchAll(/\b(noon|midday|midnight)\b/gi)) {
+    found.push({ time: /night/i.test(named[1]) ? '23:59' : '12:00', index: named.index, length: named[0].length })
+  }
+  for (const clock of text.matchAll(/(?<![\d:])\b(\d{1,2})(?::(\d{2}))?\s*(a\.?\s?m\.?|p\.?\s?m\.?)(?![a-z])/gi)) {
     let h = +clock[1] % 12
     if (/p/i.test(clock[3])) h += 12
     const m = clock[2] ?? '00'
-    if (+clock[1] >= 1 && +clock[1] <= 12) found.push({ time: `${String(h).padStart(2, '0')}:${m}`, index: clock.index, length: clock[0].length })
+    if (+clock[1] >= 1 && +clock[1] <= 12 && +m < 60) found.push({ time: `${String(h).padStart(2, '0')}:${m}`, index: clock.index, length: clock[0].length })
   }
-  if (h24) found.push({ time: `${h24[1].padStart(2, '0')}:${h24[2]}`, index: h24.index, length: h24[0].length })
-  if (!found.length) return null
-  found.sort((a, b) => a.index - b.index)
-  const t = found[0]
-  const tail = /^\s*(?:noon|midday|midnight)\b/i.exec(text.slice(t.index + t.length)) // "12:00 noon"
-  return tail ? { ...t, length: t.length + tail[0].length } : t
+  for (const h24 of text.matchAll(/(?<![\d:])\b([01]?\d|2[0-3]):([0-5]\d)\b(?!\s*(?:a\.?\s?m|p\.?\s?m))/gi)) {
+    found.push({ time: `${h24[1].padStart(2, '0')}:${h24[2]}`, index: h24.index, length: h24[0].length })
+  }
+  const extended = found.map((t) => {
+    const tail = /^\s*(?:noon|midday|midnight)\b/i.exec(text.slice(t.index + t.length)) // "12:00 noon"
+    return tail ? { ...t, length: t.length + tail[0].length } : t
+  }).sort((a, b) => a.index - b.index || b.length - a.length)
+  return extended.filter((time, index) => !extended.slice(0, index).some((earlier) => time.index < earlier.index + earlier.length))
 }
 
 interface DateHit {
@@ -198,27 +205,31 @@ const DEADLINE_CUE = /\b(?:(?:by|due|deadline(?: is)?|at the latest|expires?|clo
 /** The date (and time) a sentence is about, and whether it reads as a deadline or a scheduled moment. */
 export function findWhen(text: string, ref: string): When | null {
   const dates = findDates(text, ref)
-  const time = parseTime(text)
-  if (!dates.length && !time) return null
-  const first = dates[0]
-  let anchor = first ? first.index : time!.index
-  // "by 5 p.m. on Friday": the time comes first and the deadline word sits before it.
-  if (first && time && time.index < first.index && first.index - (time.index + time.length) <= 8) anchor = time.index
-  const before = text.slice(Math.max(0, anchor - 40), anchor)
-  const cue = DEADLINE_CUE.exec(before)
-  const kind: When['kind'] = cue || (first && /^within\b/i.test(text.slice(first.index))) ? 'deadline' : 'on'
-  // The label runs from the deadline word (if any) to the end of the date and time.
-  const start = cue ? anchor - (before.length - cue.index) : anchor
-  const endDate = first ? first.index + first.length : anchor
-  const endTime = time && time.index >= anchor - 2 && time.index - endDate < 12 ? time.index + time.length : endDate
-  const end = Math.max(endDate, endTime)
-  const label = text.slice(start, end).replace(/\s+/g, ' ').replace(/[,;:]$/, '').trim()
-  return {
-    date: first ? first.date : null,
-    time: time ? time.time : null,
-    label,
-    kind,
-    index: start,
-    length: end - start,
+  const times = findTimes(text)
+  const describe = (date: DateHit | null, time: TimeHit | null): When => {
+    const anchor = Math.min(date?.index ?? Infinity, time?.index ?? Infinity)
+    const before = text.slice(Math.max(0, anchor - 60), anchor)
+    const cue = DEADLINE_CUE.exec(before)
+    const kind = cue || (date && /^within\b/i.test(text.slice(date.index))) ? 'deadline' : 'on'
+    const start = cue ? anchor - (before.length - cue.index) : anchor
+    const end = Math.max(date ? date.index + date.length : 0, time ? time.index + time.length : 0)
+    return {
+      date: date?.date ?? null,
+      time: time?.time ?? null,
+      label: text.slice(start, end).replace(/\s+/g, ' ').replace(/[,;:]$/, '').trim(),
+      kind,
+      index: start,
+      length: end - start,
+    }
   }
+  const candidates = dates.length ? dates.map((date) => {
+    // Only attach a time connected directly to this date, not one from another clause.
+    const adjacent = times.filter((time) => time.index >= date.index + date.length
+      ? /^[\s,]*(?:at\s+)?$/i.test(text.slice(date.index + date.length, time.index))
+      : time.index + time.length <= date.index && /^[\s,]*(?:on\s+)?$/i.test(text.slice(time.index + time.length, date.index)))
+    adjacent.sort((a, b) => Math.abs(a.index - date.index) - Math.abs(b.index - date.index))
+    return describe(date, adjacent[0] ?? null)
+  }) : times.map((time) => describe(null, time))
+  // A reference date earlier in a sentence must not displace its explicit deadline.
+  return candidates.find((candidate) => candidate.kind === 'deadline') ?? candidates[0] ?? null
 }

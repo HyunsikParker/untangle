@@ -54,6 +54,7 @@ rename restart revise ship sort staple study summarise summarize sync tidy title
 `.trim().split(/\s+/))
 
 const LEAD_IN = /^(?:(?:please|kindly|also|then|next|now|first|firstly|second|secondly|third|thirdly|finally|lastly|afterwards|after that|in addition|additionally|as well|(?:once|after|before|when|to|so that)\s[^,]{2,60})\s*,?\s+)+/i
+const CONDITION = /^(if|unless|only if)\s+([^,]{3,90}),\s*(.+)$/i
 
 const SUBJECT = '(?:you|students?|applicants?|tenants?|residents?|employees?|participants?|members?|everyone)'
 const MODAL = '(?:(?:will|would)\\s+)?(?:must|need to|needs to|have to|has to|are required to|is required to|should|are expected to|are asked to)\\s+(?:also\\s+|then\\s+|first\\s+)?'
@@ -159,11 +160,22 @@ function firstWord(s: string): string {
   return (s.match(/^[A-Za-z][A-Za-z'-]*/)?.[0] ?? '').toLowerCase()
 }
 
+function isProhibition(sentence: string): boolean {
+  const action = sentence.replace(LEAD_IN, '').replace(CONDITION, '$3').replace(LEAD_IN, '')
+  return NEGATIVE.test(action) || new RegExp(`^(?:${SUBJECT}\\s+)?(?:must not|should not|cannot|can't)\\b`, 'i').test(action)
+}
+
+/** Keep qualifications wherever a step is read without its separate condition badge. */
+export function qualifiedText(step: Pick<Step, 'text' | 'condition'>): string {
+  return step.condition ? `${step.condition}: ${step.text}` : step.text
+}
+
 /** "You must submit your form by Friday." -> "Submit your form by Friday." Returns null when it is not an instruction. */
 export function asInstruction(sentence: string): { text: string; condition: string | null } | null {
+  if (isProhibition(sentence)) return null
   let s = sentence.trim().replace(/^["'(]+/, '')
   let condition: string | null = null
-  const cond = /^(if|unless|only if)\s+([^,]{3,90}),\s*(.+)$/i.exec(s)
+  const cond = CONDITION.exec(s)
   if (cond) {
     condition = capitalize(`${cond[1]} ${cond[2]}`)
     s = cond[3]
@@ -182,6 +194,8 @@ export function asInstruction(sentence: string): { text: string; condition: stri
   if (VERBS.has(firstWord(s))) return step(tidy(s))
   const ob = OBLIGATION.exec(s)
   if (ob && VERBS.has(ob[1].toLowerCase())) {
+    // An unparsed prefix may restrict who should act. Only discard a plain subject quantifier.
+    if (!/^\s*(?:each|all)?\s*$/i.test(s.slice(0, ob.index))) return step(tidy(s))
     let rest = s.slice(ob.index + ob[0].length - ob[1].length)
     if (!/^you\b/i.test(ob[0])) rest = rest.replace(/\btheir\b/g, 'your').replace(/\bthey\b/g, 'you') // "each student needs to submit their own copy"
     return step(tidy(rest))
@@ -204,11 +218,14 @@ export function untangle(text: string, ref: string): Untangled {
   const all_units = units(text)
   // An instruction that introduces a list of instructions ("Before Monday, please complete the following:") is a heading,
   // not a step of its own; its date passes to the items that have none.
-  const headings = new Map<string, When | null>()
+  const headings = new Map<string, { when: When | null; condition: string | null }>()
   for (const u of all_units) {
-    if (u.listItem || !/:\s*$/.test(u.text) || READY_CUE.test(u.text) || !asInstruction(u.text)) continue
+    const instruction = asInstruction(u.text)
+    if (u.listItem || !/:\s*$/.test(u.text) || READY_CUE.test(u.text) || !instruction) continue
     const items = all_units.filter((x) => x.listItem && x.intro === u.text)
-    if (items.length && items.filter((x) => asInstruction(x.text)).length * 2 >= items.length) headings.set(u.text, findWhen(u.text, ref))
+    if (items.length && items.filter((x) => asInstruction(x.text)).length * 2 >= items.length) {
+      headings.set(u.text, { when: findWhen(u.text, ref), condition: instruction.condition })
+    }
   }
   const steps: Step[] = []
   const ready: Note[] = []
@@ -241,19 +258,20 @@ export function untangle(text: string, ref: string): Untangled {
       continue
     }
     const contactOnly = contacts.length > 0 && (wasQuestion || /^(?:if you (?:have|need)[^,]*,|for (?:more )?(?:questions|help|information)[^,]*,)/i.test(sentence))
-    const negative = NEGATIVE.test(sentence.replace(LEAD_IN, ''))
+    const negative = isProhibition(sentence)
     let instruction = contactOnly || negative ? null : asInstruction(sentence)
-    if (!instruction && u.listItem && u.intro && /:\s*$/.test(u.intro) && asInstruction(u.intro)) {
+    if (!instruction && !negative && !contactOnly && u.listItem && u.intro && /:\s*$/.test(u.intro) && asInstruction(u.intro)) {
       instruction = { text: tidy(sentence.replace(/[.;]\s*$/, '')), condition: null }
     }
     const own = findWhen(sentence, ref)
     const inherited = u.listItem && u.intro ? headings.get(u.intro) ?? null : null
-    const when = own ?? inherited
+    const when = own ?? (instruction ? inherited?.when : null) ?? null
     if (!instruction && !negative && !contactOnly && DUE.test(sentence) && own?.date) instruction = { text: tidy(sentence), condition: null }
     if (instruction) {
       const id = `s${++n}`
-      steps.push({ id, text: instruction.text, original: u.listItem && u.intro ? `${u.intro} ${sentence}` : sentence, when, condition: instruction.condition, contacts })
-      if (when) dates.push({ when, text: sentence, stepId: id })
+      const condition = [inherited?.condition, instruction.condition].filter(Boolean).join('; ') || null
+      steps.push({ id, text: instruction.text, original: u.listItem && u.intro ? `${u.intro} ${sentence}` : sentence, when, condition, contacts })
+      if (when) dates.push({ when, text: qualifiedText(steps[steps.length - 1]), stepId: id })
       // "Bring your passport, two photos and the printed confirmation." also fills the list of things to have ready.
       const bring = /^bring\s+(.+)$/i.exec(instruction.text)
       if (bring && !u.listItem) for (const item of splitItems(bring[1])) ready.push({ text: item, original: sentence })
@@ -261,7 +279,10 @@ export function untangle(text: string, ref: string): Untangled {
     }
     if (when?.date) dates.push({ when, text: sentence, stepId: null })
     if (negative || (!contactOnly && WARNING_WORDS.test(sentence))) {
-      warnings.push({ text: tidy(sentence.replace(/^please\s+/i, '')), original: sentence })
+      warnings.push({
+        text: qualifiedText({ text: tidy(sentence.replace(/^please\s+/i, '')), condition: inherited?.condition ?? null }),
+        original: u.listItem && u.intro ? `${u.intro} ${sentence}` : sentence,
+      })
       continue
     }
     background.push(sentence)

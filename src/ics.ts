@@ -2,7 +2,7 @@
 // a reminder an hour before; a step with only a date becomes an all-day event with a 9 am reminder.
 
 import { addDays } from './dates'
-import type { Step } from './parse'
+import { qualifiedText, type Step } from './parse'
 
 export function escapeText(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n')
@@ -63,7 +63,7 @@ export function buildIcs(steps: Step[], title: string, now = new Date()): string
   for (const s of datedSteps(steps)) {
     const w = s.when!
     const date = w.date!
-    const summary = `${w.kind === 'deadline' ? 'Due: ' : ''}${s.text}`.slice(0, 200)
+    const summary = `${w.kind === 'deadline' ? 'Due: ' : ''}${qualifiedText(s)}`
     lines.push('BEGIN:VEVENT', `UID:${hash(`${title}|${s.original}|${date}`)}@untangle`, `DTSTAMP:${stamp(now)}`)
     if (w.time) {
       lines.push(`DTSTART:${localDateTime(date, w.time)}`, `DTEND:${localDateTime(date, w.time, 15)}`)
@@ -71,7 +71,7 @@ export function buildIcs(steps: Step[], title: string, now = new Date()): string
       lines.push(`DTSTART;VALUE=DATE:${compact(date)}`, `DTEND;VALUE=DATE:${compact(addDays(date, 1))}`, 'TRANSP:TRANSPARENT')
     }
     lines.push(`SUMMARY:${escapeText(summary)}`, `DESCRIPTION:${escapeText(`From "${title}": ${s.original}`)}`)
-    lines.push('BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${escapeText(s.text.slice(0, 120))}`, `TRIGGER:${w.time ? '-PT1H' : 'PT9H'}`, 'END:VALARM', 'END:VEVENT')
+    lines.push('BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${escapeText(qualifiedText(s))}`, `TRIGGER:${w.time ? '-PT1H' : 'PT9H'}`, 'END:VALARM', 'END:VEVENT')
   }
   lines.push('END:VCALENDAR')
   return lines.map(fold).join('\r\n') + '\r\n'

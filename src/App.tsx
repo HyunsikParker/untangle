@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { isIsoDate, parseIso, type When } from './dates'
 import { asText, buildIcs, datedSteps } from './ics'
-import { untangle, type Contact, type Step } from './parse'
+import { qualifiedText, untangle, type Contact, type Step } from './parse'
 import { samples } from './sample'
 
 interface Settings {
@@ -339,7 +339,7 @@ function StepItem({ step, n, done, now, onDone }: { step: Step; n: number; done:
           {step.when && (step.when.date || step.when.time) && (
             <span className={`badge ${step.when.kind}${overdue ? ' overdue' : ''}`}>{whenText(step.when, now)}</span>
           )}
-          {step.condition && <span className="badge condition">Only {step.condition.replace(/^If\b/, 'if')}</span>}
+          {step.condition && <span className="badge condition">{step.condition}</span>}
           {step.contacts.map((c) => (
             <a key={c.value} className="badge contact" href={contactHref(c)} rel="noreferrer noopener" target={c.kind === 'link' ? '_blank' : undefined}>{c.value}</a>
           ))}
@@ -477,7 +477,7 @@ function FocusMode({ steps, ready, warnings, done, now, onDone, onClose }: {
             <h2 id="focus-heading" ref={heading} tabIndex={-1} className="focus-step">{step.text}</h2>
             <div className="step-meta">
               {step.when && (step.when.date || step.when.time) && <span className={`badge ${step.when.kind}`}>{whenText(step.when, now)}</span>}
-              {step.condition && <span className="badge condition">Only {step.condition.replace(/^If\b/, 'if')}</span>}
+              {step.condition && <span className="badge condition">{step.condition}</span>}
               {step.contacts.map((c) => <a key={c.value} className="badge contact" href={contactHref(c)} rel="noreferrer noopener" target={c.kind === 'link' ? '_blank' : undefined}>{c.value}</a>)}
             </div>
             {done.has(step.id) && <p className="already">Already marked done.</p>}
@@ -489,7 +489,7 @@ function FocusMode({ steps, ready, warnings, done, now, onDone, onClose }: {
           <div className="focus-card">
             <h2 id="focus-heading" ref={heading} tabIndex={-1}>{remaining.length ? `${plural(doneCount, 'step')} done, ${remaining.length} to come back to` : 'Every step is done'}</h2>
             {remaining.length > 0 ? (
-              <ul>{remaining.map((s) => <li key={s.id}>{s.text}{s.when?.date ? ` (${whenText(s.when, now).split(' · ')[0]})` : ''}</li>)}</ul>
+              <ul>{remaining.map((s) => <li key={s.id}>{qualifiedText(s)}{s.when?.date ? ` (${whenText(s.when, now).split(' · ')[0]})` : ''}</li>)}</ul>
             ) : (
               <p>Nice work. Keep the original message until the last date has passed.</p>
             )}
@@ -503,7 +503,7 @@ function FocusMode({ steps, ready, warnings, done, now, onDone, onClose }: {
           {finished && <button type="button" className="primary big" onClick={onClose}>Back to the checklist</button>}
         </div>
         <div className="focus-tools">
-          {step && voices.length > 0 && <button type="button" className="link small" onClick={() => speak(step.text)}>Read aloud</button>}
+          {step && voices.length > 0 && <button type="button" className="link small" onClick={() => speak(qualifiedText(step))}>Read aloud</button>}
           <button type="button" className="link small" onClick={() => setTimer(timer === null ? 600 : null)}>
             {timer === null ? 'Start a 10-minute focus timer' : `Stop timer (${Math.floor(timer / 60)}:${String(timer % 60).padStart(2, '0')} left)`}
           </button>

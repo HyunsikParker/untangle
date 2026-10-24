@@ -26,7 +26,7 @@ test('financial aid sample: checklist, one step at a time, calendar file', async
   await expect(page.locator('.steps > li')).toHaveCount(4)
   await expect(page.locator('.steps > li').first()).toContainText('Submit the following documents through the Student Portal')
   await expect(page.locator('.steps > li').first().locator('.badge.deadline')).toContainText(', 5 pm · in ')
-  await expect(page.locator('.steps > li').nth(1).locator('.badge.condition')).toHaveText('Only if you are a dependent student')
+  await expect(page.locator('.steps > li').nth(1).locator('.badge.condition')).toHaveText('If you are a dependent student')
   await expect(page.locator('.card.ready li')).toHaveCount(3)
   await expect(page.locator('.card.warn li')).toHaveCount(3)
 
@@ -47,7 +47,7 @@ test('financial aid sample: checklist, one step at a time, calendar file', async
   await page.keyboard.press('Enter')
   await page.keyboard.press('Enter')
   await expect(dialog.getByRole('heading', { level: 2 })).toHaveText('3 steps done, 1 to come back to')
-  await expect(dialog.locator('.focus-card li')).toHaveText(['One of your parents must also sign the worksheet. (Only if you are a dependent student)'].map((x) => x.replace(' (Only if you are a dependent student)', '')))
+  await expect(dialog.locator('.focus-card li')).toHaveText(['If you are a dependent student: One of your parents must also sign the worksheet.'])
   await dialog.getByRole('button', { name: 'Back to the checklist' }).click()
   await expect(dialog).toHaveCount(0)
   await expect(page.locator('.steps > li.is-done')).toHaveCount(3)
@@ -117,4 +117,50 @@ test('phone width: no horizontal scroll and focus mode fits', async ({ page }) =
   await expect(page.getByRole('dialog').getByRole('button', { name: 'Done', exact: true })).toBeInViewport()
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   expect(overflow).toBeLessThanOrEqual(0)
+})
+
+test('conditional list: warnings, focus mode and calendar retain the qualification', async ({ page }) => {
+  const seen = watch(page)
+  await page.goto('/')
+  await page.getByLabel('Instructions').fill([
+    'Only if you received an offer, complete the following by Friday at 5 pm:',
+    '- Unless you already signed, sign the agreement.',
+    '- Upload your ID.',
+    '- Do not email your passport.',
+  ].join('\n'))
+  await page.locator('input[type="date"]').fill('2026-10-26')
+  await page.getByRole('button', { name: 'Untangle it' }).click()
+  await expect(page.locator('.steps > li')).toHaveCount(2)
+  await expect(page.locator('.steps .badge.condition')).toHaveText([
+    'Only if you received an offer; Unless you already signed', 'Only if you received an offer',
+  ])
+  await expect(page.locator('.card.warn li')).toHaveText(['Only if you received an offer: Do not email your passport.'])
+  await expect(page.locator('.dates li')).toHaveCount(2)
+  await expect(page.locator('.dates li').first()).toContainText('Only if you received an offer; Unless you already signed')
+  await page.screenshot({ path: 'test-results/conditional-checklist-desktop.png', fullPage: true })
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download'), page.getByRole('button', { name: 'Add dates to calendar' }).click(),
+  ])
+  await download.saveAs('test-results/untangle-conditional.ics')
+  const ics = readFileSync((await download.path())!, 'utf8').replace(/\r\n /g, '')
+  expect(ics.match(/BEGIN:VEVENT/g)).toHaveLength(2)
+  expect(ics).toContain('SUMMARY:Due: Only if you received an offer\\; Unless you already signed: Sign the agreement.')
+  expect(ics).toContain('ACTION:DISPLAY\r\nDESCRIPTION:Only if you received an offer: Upload your ID.')
+  expect(ics.match(/DTSTART:20261030T170000/g)).toHaveLength(2)
+
+  await page.setViewportSize({ width: 375, height: 760 })
+  await page.getByRole('button', { name: 'Start one step at a time' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('button', { name: 'Start', exact: true }).click()
+  await expect(dialog.locator('.badge.condition')).toHaveText('Only if you received an offer; Unless you already signed')
+  await expect(dialog.getByRole('button', { name: 'Done', exact: true })).toBeInViewport()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
+  await page.screenshot({ path: 'test-results/conditional-focus-phone.png', fullPage: true })
+  await dialog.getByRole('button', { name: 'Skip for now' }).click()
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click()
+  await expect(dialog.locator('.focus-card li')).toContainText('Only if you received an offer; Unless you already signed: Sign the agreement.')
+  expect((await new AxeBuilder({ page }).analyze()).violations.map((v) => v.id)).toEqual([])
+  expect(seen.errors).toEqual([])
+  expect(seen.requests).toEqual([])
 })

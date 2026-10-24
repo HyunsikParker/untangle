@@ -16,31 +16,30 @@ Important instructions often arrive as one dense message: a financial aid office
 move-out letter, an assignment brief, a first-day email from a new job. The steps, the deadline, the documents to gather
 and the "do not" warnings are mixed into the same paragraphs, sometimes in the same sentence.
 
-Most people don't read such a message word by word. In Jakob Nielsen's study of how people read on screen, 79% of
-participants scanned a new page and only 16% read it word for word
-([Nielsen Norman Group, 1997](https://www.nngroup.com/articles/how-users-read-on-the-web/)). Scanning a dense message is
-how a deadline or a "do not email the documents" line gets missed. It is harder still for someone with ADHD or dyslexia,
-for someone reading in a second language, or for a screen-reader user who has to listen to the whole message again to
-find one date.
+In Jakob Nielsen's study of web reading, 79% of participants scanned a new page and only 16% read it word for word
+([Nielsen Norman Group, 1997](https://www.nngroup.com/articles/how-users-read-on-the-web/)). This is a reason to
+make instructions easier to scan; the study did not test Untangle.
 
 ## Who it helps
 
 Anyone who has to act on a long message, and especially students facing administrative email for the first time, people
-for whom long text is tiring to read, and screen-reader and keyboard users.
+for whom long text is tiring to read, and screen-reader and keyboard users. These are intended users; the project has
+not been evaluated with those groups.
 
 ## What it does
 
 1. **Untangle.** Paste the message (or try one of three made-up examples) and press *Untangle it*. You get:
    - **Steps**: sentences that ask you to do something ("Submit…", "You must…", "Make sure…") and numbered or
      bulleted items, rewritten as short instructions ("You will need to submit the documents by Friday" becomes
-     "Submit the documents by Friday"). Conditions stay attached ("Only if you are a dependent student").
+     "Submit the documents by Friday"). Conditions stay attached ("If you are a dependent student"). Conditions in
+     task-list headings also follow their items into focus mode, read-aloud and calendar reminders.
    - **Due dates**: "by Friday, November 6 at 5:00 p.m.", "within 10 business days" or "before October 22" become
      dates, counted from the day the message arrived, with "in 11 days" shown next to each. A window that starts with
      something you have not done yet ("After you upload your documents, … within 10 business days") keeps its wording
      instead of a guessed date, and opening hours ("Monday to Friday, 9 a.m. to 4 p.m.") are not read as dates.
    - **Have ready**: items from "You will need:" lists, "Bring…" sentences and lists of documents.
    - **Watch out**: sentences with "do not", "late", "will not be accepted", "not allowed" and similar.
-   - **Contacts and links**, **every date in the message**, and the rest of the message, folded away.
+   - **Contacts and links**, **dates the parser identifies**, and the rest of the message, folded away.
 2. **One step at a time.** Focus mode shows a "before you start" card (things to have ready and warnings), then one step
    per screen in large text with its due date. *Done*, *Skip for now* and *Back*, or Enter and the arrow keys. At the end
    it lists what is left. An optional 10-minute focus timer, and read-aloud that only uses voices installed on the
@@ -80,29 +79,35 @@ aside.
   message stays one click away.
 - It does not understand the content: it will not tell you whether a step applies to you beyond the conditions written
   in the text, and it is not advice.
-- Dates without a year are taken to be the next occurrence; check them if a message is old.
+- Each sentence or list item gets one main date. An explicit deadline takes priority over a reference date; a time
+  attaches only when it sits directly beside the date. Check sentences with multiple deadlines or appointments.
+- Slash dates use month/day order. A month and day without a year use the current year unless that date is more than
+  a week before the reference day. A weekday means its next occurrence after the reference day. Calendar times use
+  the local time zone of the calendar that opens them.
 
 ## Privacy
 
 There is no server, no account and no analytics. The deployed page ships a Content Security Policy with
-`connect-src 'none'`, so the browser blocks any network request from the page. What you paste and your progress are kept
+`connect-src 'none'`, which blocks fetch, XMLHttpRequest and WebSocket connections. What you paste and your progress are kept
 only in this browser's local storage; *Clear my text* removes them. Read-aloud uses only voices that run on the device
 (`localService`), so the text is not sent to an online speech service.
 
 ## How it was checked
 
-- 15 unit tests (`npm test`): dates (relative words, business days, years, times, deadline versus appointment, opening
+- 33 unit tests (`npm test`): dates (relative words, business days, years, times, deadline versus appointment, opening
   hours and windows that start later), sentence splitting, list handling, rewriting obligations as instructions,
-  contacts, the three examples, an onboarding email, and the calendar and text exports.
-- 3 browser tests (`npm run test:e2e`, Playwright on the production build): the financial aid example end to end
+  contacts, the three examples, an onboarding email, and the calendar and text exports. Regression cases cover inherited
+  conditions, list prohibitions, multiple times in a sentence, and invalid clock values.
+- 4 browser tests (`npm run test:e2e`, Playwright on the production build): the financial aid example end to end
   including focus mode by keyboard and the calendar downloads (that example and the move-out letter), an automated
   accessibility scan with axe (no
   violations), no console errors, no network requests, pasting your own text, reading settings and progress kept
-  across a reload, and phone width.
+  across a reload, and phone width. A conditional-list case checks conditions in focus mode, skipped steps and calendar
+  reminders, including a 375-pixel-wide view.
 - The calendar file from the browser test is parsed again with the Python
   [icalendar](https://pypi.org/project/icalendar/) library (`python3 scripts/check_ics.py
   test-results/untangle-moveout.ics`): one timed event with a reminder an hour before and one all-day event with a
-  9 am reminder, no duplicate UIDs.
+  9 am reminder, no duplicate UIDs. An export with two conditional timed tasks passed the same independent parser.
 
 ## Run it locally
 
@@ -124,8 +129,8 @@ npm run test:e2e   # browser tests on the production build
 
 - Built during Taskforge 2026 (started October 22, 2026). The date-handling and calendar-folding code follows the
   approach of my own Crunchmap project (built the same day for another hackathon); no other pre-existing code.
-- **AI assistance:** built with Claude (Anthropic), an AI coding assistant, which wrote the code, the tests and this
-  README.
+- **AI assistance:** Claude (Anthropic) wrote the initial code, tests and README. OpenAI Codex assisted with the
+  October 24 parsing fixes, regression tests and documentation updates.
 - Libraries: React, Vite and TypeScript; Vitest, Testing Library, Playwright and axe-core for tests; the Python
   icalendar library for the calendar check.
 - The example messages, people, addresses, phone numbers and the university are made up.
