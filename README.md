@@ -44,8 +44,10 @@ not been evaluated with those groups.
    per screen in large text with its due date. *Done*, *Skip for now* and *Back*, or Enter and the arrow keys. At the end
    it lists what is left. An optional 10-minute focus timer, and read-aloud that only uses voices installed on the
    device.
-3. **Keep track.** Tick steps and documents off; progress stays in this browser. Add the dated steps to a calendar
-   (`.ics` with reminders) or copy the checklist as text.
+3. **Keep track.** Tick steps and documents off; your checklist is saved in this browser when storage is available.
+   Editing background text keeps completed steps checked. Changing a step or its condition resets that step. Examples
+   open separately, so trying one does not replace your own instructions. Add dated steps to a calendar (`.ics` with
+   reminders) or copy the checklist as text.
 4. **Read comfortably.** Larger text, wider spacing and an easy-read font, applied to the whole page.
 
 Every step keeps the sentence it came from: *Original wording* shows it, because a rewritten step is a reading aid,
@@ -89,21 +91,26 @@ aside.
 
 There is no server, no account and no analytics. The deployed page ships a Content Security Policy with
 `connect-src 'none'`, which blocks fetch, XMLHttpRequest and WebSocket connections. What you paste and your progress are kept
-only in this browser's local storage; *Clear my text* removes them. Read-aloud uses only voices that run on the device
+only in this browser's local storage; *Clear my text* clears the current checklist and saves that change. If storage
+fails, the page says so and offers a text download. If saved data is damaged, it preserves the original copy until you
+choose to save the recovered checklist; you can download that original first. Example checklists are temporary.
+Read-aloud uses only voices that run on the device
 (`localService`), so the text is not sent to an online speech service.
 
 ## How it was checked
 
-- 33 unit tests (`npm test`): dates (relative words, business days, years, times, deadline versus appointment, opening
+- 41 unit tests (`npm test`): dates (relative words, business days, years, times, deadline versus appointment, opening
   hours and windows that start later), sentence splitting, list handling, rewriting obligations as instructions,
   contacts, the three examples, an onboarding email, and the calendar and text exports. Regression cases cover inherited
-  conditions, list prohibitions, multiple times in a sentence, and invalid clock values.
-- 4 browser tests (`npm run test:e2e`, Playwright on the production build): the financial aid example end to end
+  conditions, list prohibitions, multiple times in a sentence, invalid clock values, and validation of damaged saved data.
+- 11 browser tests (`npm run test:e2e`, Playwright on the production build): the financial aid example end to end
   including focus mode by keyboard and the calendar downloads (that example and the move-out letter), an automated
   accessibility scan with axe (no
   violations), no console errors, no network requests, pasting your own text, reading settings and progress kept
   across a reload, and phone width. A conditional-list case checks conditions in focus mode, skipped steps and calendar
-  reminders, including a 375-pixel-wide view.
+  reminders, including a 375-pixel-wide view. Recovery tests cover damaged JSON and fields, original-copy downloads,
+  blocked storage, failed saves and retry, unchanged versus edited steps, example previews, reload and clearing text.
+  Recovery controls were also checked at 375 pixels with large text, wide spacing and dark mode.
 - The calendar file from the browser test is parsed again with the Python
   [icalendar](https://pypi.org/project/icalendar/) library (`python3 scripts/check_ics.py
   test-results/untangle-moveout.ics`): one timed event with a reminder an hour before and one all-day event with a
@@ -123,6 +130,7 @@ npm run test:e2e   # browser tests on the production build
 - `src/parse.ts` splits the text and sorts sentences into steps, things to have ready, warnings and contacts.
 - `src/dates.ts` finds dates and times and resolves relative words.
 - `src/ics.ts` writes the calendar file and the plain-text checklist.
+- `src/storage.ts` validates saved checklists and preserves unreadable copies for recovery.
 - `src/App.tsx` and `src/styles.css` are the interface, including focus mode and the reading settings.
 
 ## Credits and disclosure
@@ -130,7 +138,7 @@ npm run test:e2e   # browser tests on the production build
 - Built during Taskforge 2026 (started October 22, 2026). The date-handling and calendar-folding code follows the
   approach of my own Crunchmap project (built the same day for another hackathon); no other pre-existing code.
 - **AI assistance:** Claude (Anthropic) wrote the initial code, tests and README. OpenAI Codex assisted with the
-  October 24 parsing fixes, regression tests and documentation updates.
+  October 24 parsing and recovery fixes, regression tests and documentation updates.
 - Libraries: React, Vite and TypeScript; Vitest, Testing Library, Playwright and axe-core for tests; the Python
   icalendar library for the calendar check.
 - The example messages, people, addresses, phone numbers and the university are made up.

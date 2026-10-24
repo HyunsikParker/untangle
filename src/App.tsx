@@ -3,44 +3,10 @@ import { isIsoDate, parseIso, type When } from './dates'
 import { asText, buildIcs, datedSteps } from './ics'
 import { qualifiedText, untangle, type Contact, type Step } from './parse'
 import { samples } from './sample'
+import { KEY, loadSaved, today, type Saved, type Settings } from './storage'
 
-interface Settings {
-  size: 0 | 1 | 2 | 3
-  relaxed: boolean
-  easyFont: boolean
-}
-
-interface Saved {
-  text: string
-  received: string
-  view: 'input' | 'list'
-  done: string[] // original sentences of finished steps, so edits elsewhere keep progress
-  have: string[] // things marked as ready
-  settings: Settings
-}
-
-const KEY = 'untangle.v1'
 const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
-function today(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-function load(): Saved {
-  const fresh: Saved = { text: '', received: today(), view: 'input', done: [], have: [], settings: { size: 1, relaxed: false, easyFont: false } }
-  try {
-    const raw = localStorage.getItem(KEY)
-    if (raw) {
-      const s = JSON.parse(raw) as Saved
-      if (typeof s.text === 'string' && isIsoDate(s.received)) return { ...fresh, ...s, settings: { ...fresh.settings, ...s.settings } }
-    }
-  } catch {
-    // Storage may be unavailable; start fresh.
-  }
-  return fresh
-}
 
 function dayLabel(date: string): string {
   const d = parseIso(date)
@@ -81,18 +47,30 @@ function plural(n: number, one: string, many = `${one}s`): string {
 }
 
 export default function App() {
-  const [state, setState] = useState<Saved>(load)
+  const [initial] = useState(loadSaved)
+  const [personal, setPersonal] = useState(initial.saved)
+  const [example, setExample] = useState<Saved | null>(null)
+  const [recovery, setRecovery] = useState(initial.recovery)
+  const [saveError, setSaveError] = useState(false)
+  const [retry, setRetry] = useState(0)
+  const state = { ...(example ?? personal), settings: personal.settings }
+  const setState = (change: (previous: Saved) => Saved) => {
+    if (example) setExample((s) => s ? change(s) : s)
+    else setPersonal(change)
+  }
   const [focus, setFocus] = useState(false)
   const [note, setNote] = useState('')
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
+    if (recovery !== null || initial.readBlocked) return
     try {
-      localStorage.setItem(KEY, JSON.stringify(state))
+      localStorage.setItem(KEY, JSON.stringify(personal))
+      setSaveError(false)
     } catch {
-      // Not saving is fine.
+      setSaveError(true)
     }
-  }, [state])
+  }, [personal, recovery, retry, initial.readBlocked])
 
   useEffect(() => {
     const root = document.documentElement
@@ -105,11 +83,20 @@ export default function App() {
   const title = titleOf(state.text)
   const done = new Set(result.steps.filter((s) => state.done.includes(s.original)).map((s) => s.id))
   const update = (patch: Partial<Saved>) => setState((s) => ({ ...s, ...patch }))
-  const setSettings = (patch: Partial<Settings>) => setState((s) => ({ ...s, settings: { ...s.settings, ...patch } }))
+  const setSettings = (patch: Partial<Settings>) => setPersonal((s) => ({ ...s, settings: { ...s.settings, ...patch } }))
   const toggleDone = (step: Step, value: boolean) =>
     setState((s) => ({ ...s, done: value ? [...new Set([...s.done, step.original])] : s.done.filter((d) => d !== step.original) }))
   const toggleHave = (item: string, value: boolean) =>
     setState((s) => ({ ...s, have: value ? [...new Set([...s.have, item])] : s.have.filter((h) => h !== item) }))
+
+  const editText = (text: string) => {
+    const next = untangle(text, state.received)
+    // Keep completion only while both the wording and its inherited conditions/dates stay the same.
+    const unchanged = new Set(result.steps.filter((old) => next.steps.some((step) =>
+      step.original === old.original && qualifiedText(step) === qualifiedText(old) && JSON.stringify(step.when) === JSON.stringify(old.when),
+    )).map((step) => step.original))
+    update({ text, done: state.done.filter((original) => unchanged.has(original)), have: state.have.filter((item) => next.ready.some((ready) => ready.text === item)) })
+  }
 
   const run = () => {
     if (!state.text.trim()) {
@@ -124,8 +111,33 @@ export default function App() {
 
   const loadSample = (id: string) => {
     const s = samples(today()).find((x) => x.id === id)!
-    setState((prev) => ({ ...prev, text: s.text, received: s.received, view: 'list', done: [], have: [] }))
+    setNote('')
+    setExample({ ...personal, text: s.text, received: s.received, view: 'list', done: [], have: [] })
     requestAnimationFrame(() => document.getElementById('list-title')?.focus())
+  }
+
+  const returnToPersonal = () => {
+    setExample(null)
+    setFocus(false)
+    setNote('')
+    requestAnimationFrame(() => personal.view === 'input' ? inputRef.current?.focus() : document.getElementById('list-title')?.focus())
+  }
+
+  const saveFile = (content: string, name: string, type: string) => {
+    const url = URL.createObjectURL(new Blob([content], { type }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = name
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 10_000)
+  }
+
+  const downloadPersonal = () => {
+    const parsed = untangle(personal.text, personal.received)
+    const completed = new Set(parsed.steps.filter((s) => personal.done.includes(s.original)).map((s) => s.id))
+    saveFile(`Received on: ${personal.received}\n\nOriginal instructions\n${personal.text}\n\n${asText(titleOf(personal.text), parsed.steps, completed, parsed.ready.map((r) => r.text), parsed.warnings.map((w) => w.text))}`, 'untangle-checklist.txt', 'text/plain;charset=utf-8')
   }
 
   const download = () => {
@@ -164,6 +176,32 @@ export default function App() {
         <ReadingSettings settings={state.settings} onChange={setSettings} />
       </header>
 
+      {(recovery !== null || initial.readBlocked || saveError) && (
+        <aside className="storage-notice" aria-label="Saving your checklist">
+          <p role="alert">
+            {recovery !== null
+              ? 'Some saved data could not be read. The instructions we could recover are shown below. Check the received date and completed steps. Your original saved copy has not been changed. Download it before saving the recovered checklist.'
+              : initial.readBlocked
+                ? 'This browser could not open your saved checklist. You can work here, but changes will not be saved. Download your instructions before closing this page.'
+                : 'Your latest changes could not be saved in this browser. Keep this page open and retry, or download your instructions before closing it.'}
+          </p>
+          <div className="actions">
+            {recovery !== null && <>
+              <button type="button" className="secondary" onClick={() => saveFile(recovery, 'untangle-saved-copy.json', 'application/json')}>Download saved copy</button>
+              <button type="button" className="secondary" onClick={() => setRecovery(null)}>Save recovered checklist</button>
+            </>}
+            {saveError && <button type="button" className="secondary" onClick={() => setRetry((n) => n + 1)}>Retry saving</button>}
+            {(saveError || initial.readBlocked) && <button type="button" className="secondary" onClick={downloadPersonal}>Download my instructions</button>}
+          </div>
+        </aside>
+      )}
+      {example && (
+        <aside className="example-notice" aria-label="Example preview">
+          <p>This is a made-up example. Your own instructions are kept separately. Example progress lasts until you leave this preview.</p>
+          <button type="button" className="secondary" onClick={returnToPersonal}>Return to my instructions</button>
+        </aside>
+      )}
+
       {state.view === 'input' ? (
         <main className="input-view">
           <h1>Turn a wall of instructions into one clear step at a time</h1>
@@ -180,7 +218,7 @@ export default function App() {
               value={state.text}
               rows={12}
               placeholder="Paste the message here"
-              onChange={(e) => update({ text: e.target.value, done: [], have: [] })}
+              onChange={(e) => editText(e.target.value)}
             />
             <div className="paste-row">
               <label className="date-field">
@@ -320,7 +358,7 @@ export default function App() {
       )}
 
       <footer className="footer">
-        <p>Untangle runs entirely in your browser: nothing you paste is uploaded, and the page cannot make network requests. Your text and progress stay in this browser until you clear them. <button type="button" className="link small" onClick={() => { setState((s) => ({ ...s, text: '', view: 'input', done: [], have: [] })); setNote('') }}>Clear my text</button></p>
+        <p>Untangle runs entirely in your browser: nothing you paste is uploaded, and the page cannot make network requests. Your own text and progress are saved here when browser storage is available. {!example && <button type="button" className="link small" onClick={() => { setPersonal((s) => ({ ...s, text: '', view: 'input', done: [], have: [] })); setRecovery(null); setNote('') }}>Clear my text</button>}</p>
       </footer>
     </div>
   )
